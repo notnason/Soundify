@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Soundify - Web Player</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+
+      .song-list::-webkit-scrollbar { width: 8px; }
+      .song-list::-webkit-scrollbar-track { background: #282828; border-radius: 10px; }
+      .song-list::-webkit-scrollbar-thumb { background-color: #535353; border-radius: 10px; border: 2px solid #282828; }
+
+      input[type="range"]#progressBar { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; border-radius: 5px; cursor: pointer; outline: none; background: linear-gradient(to right, #fa7d07 0%, #4d4d4d 0%); } 
+      input[type="range"]#progressBar::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 14px; height: 14px; background: #ffffff; border-radius: 50%; cursor: pointer; position: relative; z-index: 1;} 
+      input[type="range"]#progressBar::-moz-range-thumb { width: 14px; height: 14px; background: #ffffff; border-radius: 50%; cursor: pointer; border: none; }
+      input[type="range"]#progressBar::-moz-range-track { height: 4px; border-radius: 5px; background: linear-gradient(to right, #fa7d07 0%, #4d4d4d 0%); } 
+
+      input[type="range"]#volumeControl { -webkit-appearance: none; appearance: none; width: 100%; height: 4px; background: #4d4d4d; border-radius: 5px; cursor: pointer; outline: none; }
+      input[type="range"]#volumeControl::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 12px; height: 12px; background: #ffffff; border-radius: 50%; cursor: pointer;} 
+      input[type="range"]#volumeControl::-moz-range-thumb { width: 12px; height: 12px; background: #ffffff; border-radius: 50%; cursor: pointer; border: none; }
+      input[type="range"]#volumeControl::-moz-range-track { background: #4d4d4d; border-radius: 5px; }
+
+      input[type="file"] { display: none; } 
+      button, .song-item { transition: background-color 0.2s ease-in-out, opacity 0.2s ease-in-out; }
+      .drag-over { border-color: #fb923c !important; background-color: #333 !important; } 
+
+      .loader { border: 4px solid #f3f3f3; border-radius: 50%; border-top: 4px solid #fa7d07; width: 20px; height: 20px; -webkit-animation: spin 1s linear infinite; animation: spin 1s linear infinite; display: inline-block; margin-left: 10px; vertical-align: middle; }
+      @-webkit-keyframes spin { 0% { -webkit-transform: rotate(0deg); } 100% { -webkit-transform: rotate(360deg); } }
+      @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+       .loader.border-top-color-white { border-top-color: #ffffff; } 
+
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="bg-[#121212] text-gray-300 font-['Inter',_sans-serif] flex flex-col h-screen">
+
+    <div class="flex-1 flex overflow-hidden">
+        <main class="flex-1 bg-[#181818] overflow-y-auto p-6">
+            <div class="flex justify-between items-center mb-6 sticky top-0 bg-[#181818] py-4 z-10 border-b border-gray-800">
+                <div class="relative flex-grow max-w-md">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-3">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-gray-400">
+                            <circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>
+                        </svg>
+                    </span>
+                    <input type="text" id="searchInput" placeholder="Search for songs, artists, albums..." class="w-full pl-10 pr-4 py-2 rounded-full bg-[#282828] text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-500 border border-transparent focus:border-orange-500"/>
+                </div>
+                <button id="addSongBtn" class="ml-4 bg-orange-600 hover:bg-orange-700 text-white font-bold py-2 px-4 rounded-full flex items-center transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-2">
+                        <path d="M5 12h14"/><path d="M12 5v14"/>
+                    </svg> Add Song
+                </button>
+            </div>
+
+            <div id="songList" class="song-list space-y-1 overflow-y-auto" style="max-height: calc(100vh - 260px);">
+                <p id="loadingMessage" class="text-center text-gray-500 mt-10">Loading songs...</p>
+                <p id="noSongsMessage" class="text-center text-gray-500 mt-10 hidden">Your library is empty. Click 'Add Song' to get started!</p>
+                </div>
+        </main>
+    </div>
+
+    <footer class="bg-[#181818] border-t border-gray-800 p-4 flex items-center justify-between text-sm z-20 static">
+
+        <div class="flex items-center min-w-0 absolute">
+            <img id="playerCover" src="https://placehold.co/64x64/282828/535353?text=?" alt="Album Cover" class="w-14 h-14 rounded mr-3 object-cover flex-shrink-0 shadow-md">
+            <div class="overflow-hidden">
+                <div id="playerTitle" class="font-semibold text-white truncate">No Song Playing</div>
+                <div id="playerArtist" class="text-xs text-gray-400 truncate"></div>
+            </div>
+        </div>
+
+        <div class="flex flex-col items-center flex-1 mx-4" style="margin-left: 10%;">
+            <div class="flex items-center space-x-4 mb-1">
+                <button id="prevBtn" class="text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Previous">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="19 20 9 12 19 4 19 20"/><line x1="5" x2="5" y1="19" y2="5"/>
+                    </svg>
+                </button>
+                <button id="playPauseBtn" class="bg-white text-black rounded-full w-8 h-8 flex items-center justify-center mx-2 hover:scale-105 transition-transform disabled:opacity-70" title="Play/Pause">
+                    <span id="playPauseIconContainer">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+                            <polygon points="6 3 20 12 6 21 6 3"/>
+                        </svg>
+                    </span>
+                </button>
+                <button id="nextBtn" class="text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed" title="Next">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="5 4 15 12 5 20 5 4"/><line x1="19" x2="19" y1="5" y2="19"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="flex items-center w-full max-w-md mt-1">
+                <span id="currentTime" class="text-xs text-gray-400 mr-2 w-8 text-right tabular-nums">0:00</span>
+                 <input type="range" id="progressBar" value="0" max="100" class="flex-grow disabled:opacity-70">
+                 <span id="duration" class="text-xs text-gray-400 ml-2 w-8 tabular-nums">0:00</span>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-end w-700 space-x-2">
+             <button id="volumeIconBtn" class="text-gray-400 hover:text-white" title="Mute/Unmute">
+                 <span id="volumeIconContainer">
+                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                         <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 5.53a10 10 0 0 1 0 14.14"/>
+                     </svg>
+                 </span>
+             </button>
+             <input type="range" id="volumeControl" value="100" max="100" class="w-24 cursor-pointer">
+        </div>
+    </footer>
+
+    <div id="addSongModal" class="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 hidden p-4">
+        <div class="bg-[#282828] p-6 md:p-8 rounded-lg shadow-xl w-full max-w-md relative text-gray-300">
+            <button id="closeModalBtn" class="absolute top-3 right-3 text-gray-500 hover:text-white" title="Close">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                     <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+            </button>
+            <h2 class="text-xl md:text-2xl font-bold mb-6 text-white text-center">Add New Song</h2>
+
+            <div class="mb-4">
+                <label class="block text-sm font-medium text-gray-400 mb-1" for="mp3Input">MP3 File (Required)</label>
+                <div id="dropZoneMp3" class="border-2 border-dashed border-gray-600 rounded-lg p-5 text-center cursor-pointer hover:border-orange-500 transition-colors">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500 mx-auto mb-2">
+                        <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/>
+                    </svg>
+                    <p class="text-gray-400 text-sm">Drag & Drop MP3 file here</p>
+                    <p class="text-xs text-gray-500 my-1">or</p>
+                    <button type="button" id="browseMp3Btn" class="text-orange-500 hover:text-orange-400 font-semibold text-sm underline">Browse MP3</button>
+                    <p id="mp3FileName" class="text-white mt-2 text-sm truncate font-mono"></p>
+                    <input type="file" id="mp3Input" accept=".mp3,audio/mpeg" required class="hidden">
+                </div>
+            </div>
+
+            <div class="mb-4">
+                <label for="titleNameInput" class="block text-sm font-medium text-gray-400 mb-1">Song Title (Optional)</label>
+                <input type="text" id="titleNameInput" name="titleName" placeholder="Leave blank to use filename/tag" class="w-full px-3 py-2 rounded bg-[#333] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 text-sm">
+            </div>
+
+            <div class="mb-4">
+                <label for="artistNameInput" class="block text-sm font-medium text-gray-400 mb-1">Artist Name (Optional)</label>
+                <input type="text" id="artistNameInput" name="artistName" placeholder="Leave blank to use MP3 tag" class="w-full px-3 py-2 rounded bg-[#333] border border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 text-sm">
+            </div>
+
+            <div class="mb-6">
+                 <label class="block text-sm font-medium text-gray-400 mb-1" for="coverInput">Album Cover (Optional)</label>
+                 <div id="dropZoneCover" class="border-2 border-dashed border-gray-600 rounded-lg p-5 text-center cursor-pointer hover:border-orange-500 transition-colors">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-gray-500 mx-auto mb-2">
+                          <rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+                      </svg>
+                      <p class="text-gray-400 text-sm">Drag & Drop Cover Image (PNG, JPG, GIF)</p>
+                      <p class="text-xs text-gray-500 my-1">or</p>
+                      <button type="button" id="browseCoverBtn" class="text-orange-500 hover:text-orange-400 font-semibold text-sm underline">Browse Image</button>
+                      <p id="coverFileName" class="text-white mt-2 text-sm truncate font-mono"></p>
+                      <input type="file" id="coverInput" name="coverFile" accept="image/png, image/jpeg, image/gif" class="hidden">
+                 </div>
+            </div>
+
+            <div class="flex justify-end space-x-3">
+                <button id="cancelAddSongBtn" type="button" class="py-2 px-4 rounded bg-gray-600 hover:bg-gray-700 text-white text-sm transition-colors">Cancel</button>
+                <button id="saveSongBtn" type="button" class="py-2 px-5 rounded bg-orange-600 hover:bg-orange-700 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-sm transition-colors" disabled>
+                    Save Song
+                    <span id="saveSpinner" class="loader hidden ml-2 border-top-color-white"></span>
+                </button>
+            </div>
+            <p id="modalError" class="text-red-500 text-sm mt-4 text-center hidden h-5"></p>
+        </div>
+    </div>
+
+    <audio id="audioPlayer" preload="metadata"></audio>
+
+    <script>
+        const DEFAULT_COVER = 'https://placehold.co/64x64/282828/535353?text=?';
+        const ALLOWED_COVER_TYPES = ['image/png', 'image/jpeg', 'image/gif'];
+        const MAX_FILE_SIZE_MB = 80; 
+
+        const SVG_PLAY = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>`;
+        const SVG_PAUSE = `<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>`;
+        const SVG_VOLUME_HIGH = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 5.53a10 10 0 0 1 0 14.14"/></svg>`;
+        const SVG_VOLUME_LOW = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>`;
+        const SVG_VOLUME_MUTED = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" x2="17" y1="9" y2="15"/><line x1="17" x2="23" y1="9" y2="15"/></svg>`;
+        const SVG_DELETE = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="pointer-events-none"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`; 
+
+
+        const addSongBtn = document.getElementById('addSongBtn');
+        const addSongModal = document.getElementById('addSongModal');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+        const cancelAddSongBtn = document.getElementById('cancelAddSongBtn');
+        const saveSongBtn = document.getElementById('saveSongBtn');
+        const searchInput = document.getElementById('searchInput');
+        const songList = document.getElementById('songList');
+        const loadingMessage = document.getElementById('loadingMessage');
+        const noSongsMessage = document.getElementById('noSongsMessage');
+
+        const dropZoneMp3 = document.getElementById('dropZoneMp3');
+        const mp3Input = document.getElementById('mp3Input');
+        const mp3FileName = document.getElementById('mp3FileName');
+        const browseMp3Btn = document.getElementById('browseMp3Btn');
+        const titleNameInput = document.getElementById('titleNameInput');
+        const artistNameInput = document.getElementById('artistNameInput');
+        const dropZoneCover = document.getElementById('dropZoneCover');
+        const coverInput = document.getElementById('coverInput');
+        const coverFileName = document.getElementById('coverFileName');
+        const browseCoverBtn = document.getElementById('browseCoverBtn');
+        const modalError = document.getElementById('modalError');
+        const saveSpinner = document.getElementById('saveSpinner');
+
+        const audioPlayer = document.getElementById('audioPlayer');
+        const playerCover = document.getElementById('playerCover');
+        const playerTitle = document.getElementById('playerTitle');
+        const playerArtist = document.getElementById('playerArtist');
+        const playPauseBtn = document.getElementById('playPauseBtn');
+        const playPauseIconContainer = document.getElementById('playPauseIconContainer');
+        const prevBtn = document.getElementById('prevBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const progressBar = document.getElementById('progressBar');
+        const currentTime = document.getElementById('currentTime');
+        const duration = document.getElementById('duration');
+        const volumeControl = document.getElementById('volumeControl');
+        const volumeIconBtn = document.getElementById('volumeIconBtn');
+        const volumeIconContainer = document.getElementById('volumeIconContainer');
+
+        let songs = [];
+        let currentSongIndex = -1;
+        let isPlaying = false;
+        let mp3File = null;
+        let coverFile = null;
+        let lastVolume = 1; 
+
+        async function init() {
+            console.log("Soundify Initializing...");
+            setupEventListeners();
+            await loadSongsFromServer();
+            updatePlayerUI();
+            updateProgressBarVisual();
+            updateVolumeVisual();
+            checkPlayerButtons();
+            console.log("Soundify Ready.");
+        }
+
+        async function loadSongsFromServer() {
+            console.log("Fetching songs...");
+            loadingMessage.classList.remove('hidden');
+            noSongsMessage.classList.add('hidden');
+            songList.innerHTML = '';
+
+            try {
+                const response = await fetch('/api/songs');
+                if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                const serverSongs = await response.json();
+                songs = serverSongs.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
+                console.log("Songs loaded:", songs.length);
+                renderSongList(songs);
+
+            } catch (error) {
+                console.error("Error loading songs:", error);
+                songList.innerHTML = '<p class="text-center text-red-500 mt-10">Error loading song library.</p>';
+            } finally {
+                loadingMessage.classList.add('hidden');
+                checkShowNoSongsMessage();
+                checkPlayerButtons();
+            }
+        }
+
+        async function handleUpload() {
+            if (!mp3File) { showModalError("Please select an MP3 file."); return; }
+            if (saveSongBtn.disabled) return;
+
+            saveSongBtn.disabled = true; saveSpinner.classList.remove('hidden'); hideModalError();
+            const formData = new FormData();
+            formData.append('file', mp3File);
+
+            const titleName = titleNameInput.value.trim();
+            const artistName = artistNameInput.value.trim();
+
+            if (titleName) formData.append('titleName', titleName);
+            if (artistName) formData.append('artistName', artistName);
+            if (coverFile) formData.append('coverFile', coverFile);
+
+            console.log("Uploading:", {
+                filename: mp3File.name,
+                title: titleName || '(tag/filename)',
+                artist: artistName || '(tag)',
+                cover: coverFile ? coverFile.name : '(none/tag)'
+             });
+
+            try {
+                const response = await fetch('/upload', { method: 'POST', body: formData });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result?.error || response.statusText || `Upload failed: ${response.status}`);
+                }
+
+                console.log("Upload successful:", result);
+                closeModal();
+                await loadSongsFromServer();
+
+            } catch (error) {
+                console.error("Error uploading file:", error);
+                showModalError(`Upload Error: ${error.message}`);
+                 saveSongBtn.disabled = !mp3File;
+                 saveSpinner.classList.add('hidden');
+            }
+        }
+
+        async function deleteSongOnServer(songId, songTitle) {
+            if (!songId || !confirm(`Are you sure you want to delete "${songTitle || 'this song'}"? This cannot be undone.`)) return;
+
+            console.log(`Attempting delete song ID: ${songId}`);
+            const deleteButton = songList.querySelector(`.delete-song-btn[data-song-id="${songId}"]`);
+            if (deleteButton) deleteButton.disabled = true;
+
+            try {
+                const response = await fetch(`/api/songs/${songId}`, { method: 'DELETE' });
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(result?.error || `Failed to delete: ${response.status}`);
+                }
+
+                console.log("Delete successful:", result.message);
+
+                const deletedIndex = songs.findIndex(song => song.id === songId);
+                if (deletedIndex === currentSongIndex) {
+                    stopPlayback();
+                    currentSongIndex = -1;
+                    updatePlayerUI();
+                }
+
+                songs = songs.filter(song => song.id !== songId);
+
+                 if (deletedIndex !== -1 && currentSongIndex > deletedIndex) {
+                     currentSongIndex--;
+                 }
+
+                renderSongList(songs);
+                checkPlayerButtons();
+                checkShowNoSongsMessage();
+
+            } catch (error) {
+                console.error("Error deleting song:", error);
+                alert(`Failed to delete song: ${error.message}`);
+                if (deleteButton) deleteButton.disabled = false;
+            }
+        }
+
+        function renderSongList(songsToRender) {
+            songList.innerHTML = '';
+
+            if (songsToRender.length > 0) {
+                songsToRender.forEach((song, index) => {
+                    const songElement = document.createElement('div');
+                    songElement.classList.add('song-item', 'flex', 'items-center', 'p-2', 'pr-3', 'rounded-lg', 'hover:bg-[#2a2a2a]', 'cursor-pointer', 'group', 'transition-colors', 'duration-150');
+                    songElement.dataset.songId = song.id;
+                    songElement.dataset.index = index;
+
+                    songElement.innerHTML = `
+                        <img src="${song.coverSrc || DEFAULT_COVER}" alt="${song.title || 'Song'} cover" class="w-10 h-10 rounded object-cover mr-3 flex-shrink-0 shadow">
+                        <div class="flex-grow mr-4 overflow-hidden min-w-0">
+                            <p class="text-white font-medium truncate text-sm">${song.title || 'Unknown Title'}</p>
+                            <p class="text-xs text-gray-400 truncate">${song.artist || 'Unknown Artist'}</p>
+                        </div>
+                        <button class="delete-song-btn text-gray-500 hover:text-red-500 ml-auto p-1 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity flex-shrink-0" data-song-id="${song.id}" title="Delete Song">
+                            ${SVG_DELETE}
+                        </button>
+                    `;
+
+                    songElement.addEventListener('click', (e) => {
+                        if (!e.target.closest('.delete-song-btn')) {
+                            const globalIndex = songs.findIndex(s => s.id === songElement.dataset.songId);
+                            if (globalIndex !== -1) playSong(globalIndex);
+                            else console.warn("Song ID not found:", songElement.dataset.songId);
+                        }
+                    });
+
+                    const deleteBtn = songElement.querySelector('.delete-song-btn');
+                    deleteBtn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        await deleteSongOnServer(e.currentTarget.dataset.songId, song.title);
+                    });
+
+                    songList.appendChild(songElement);
+                });
+                highlightCurrentSong();
+            }
+             checkShowNoSongsMessage();
+        }
+
+        function highlightCurrentSong() {
+            const currentId = (currentSongIndex !== -1 && songs[currentSongIndex]) ? songs[currentSongIndex].id : null;
+            document.querySelectorAll('.song-item').forEach(item => {
+                const isCurrent = item.dataset.songId === currentId;
+                item.classList.toggle('bg-[#3a3a3a]', isCurrent);
+                const titleEl = item.querySelector('p:first-child');
+                const artistEl = item.querySelector('p:last-child');
+                if (titleEl) titleEl.classList.toggle('text-orange-400', isCurrent);
+                if (artistEl) artistEl.classList.toggle('text-gray-300', isCurrent);
+            });
+        }
+
+        function checkShowNoSongsMessage() {
+             noSongsMessage.classList.toggle('hidden', songs.length > 0);
+        }
+
+        function checkPlayerButtons() {
+            const hasSongs = songs.length > 0;
+            playPauseBtn.disabled = !hasSongs;
+            progressBar.disabled = !hasSongs;
+            const canNavigate = songs.length > 0;
+            prevBtn.disabled = !canNavigate;
+            nextBtn.disabled = !canNavigate;
+            if (!hasSongs) {
+                 stopPlayback();
+                 currentSongIndex = -1;
+                 updatePlayerUI();
+            }
+        }
+
+        function playSong(index) {
+            if (index < 0 || index >= songs.length) { console.warn(`playSong invalid index: ${index}`); return; }
+            const song = songs[index];
+            if (!song || !song.audioSrc) {
+                console.error("Cannot play: Invalid song data or missing audioSrc.", song);
+                alert(`Could not load audio for "${song?.title || 'this song'}". Source may be missing or invalid.`);
+                stopPlayback(); updatePlayerUI(); checkPlayerButtons(); return;
+            }
+
+            const currentAbsoluteSrc = new URL(audioPlayer.currentSrc || '', document.baseURI).pathname;
+            const newAbsoluteSrc = new URL(song.audioSrc, document.baseURI).pathname;
+
+            if (currentSongIndex !== index || currentAbsoluteSrc !== newAbsoluteSrc || audioPlayer.readyState === 0) {
+                console.log(`Loading: ${song.title} (Index: ${index}, Src: ${song.audioSrc})`);
+                currentSongIndex = index;
+                audioPlayer.src = song.audioSrc;
+                audioPlayer.load();
+                updatePlayerUI();
+                highlightCurrentSong();
+            }
+
+            const playPromise = audioPlayer.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    isPlaying = true;
+                    updatePlayerUI();
+                    highlightCurrentSong();
+                    checkPlayerButtons();
+                }).catch(error => {
+                    console.error(`Error playing "${song.title}":`, error);
+                    isPlaying = false;
+                    updatePlayerUI();
+                    checkPlayerButtons();
+                });
+            } else {
+                 isPlaying = !audioPlayer.paused;
+                 updatePlayerUI();
+                 highlightCurrentSong();
+                 checkPlayerButtons();
+            }
+        }
+
+        function togglePlayPause() {
+            if (songs.length === 0) return;
+            if (currentSongIndex === -1) playSong(0);
+            else {
+                if (isPlaying) {
+                    audioPlayer.pause();
+                    isPlaying = false;
+                } else {
+                    const playPromise = audioPlayer.play();
+                     if (playPromise !== undefined) {
+                         playPromise.then(() => { isPlaying = true; updatePlayerUI(); })
+                         .catch(err => {
+                             console.error("Play error on toggle:", err);
+                             isPlaying = false; updatePlayerUI();
+                             if (songs[currentSongIndex]?.audioSrc) {
+                                console.warn("Retrying load due to play error...");
+                                audioPlayer.src = songs[currentSongIndex].audioSrc;
+                                audioPlayer.load();
+                             }
+                         });
+                     } else isPlaying = !audioPlayer.paused;
+                }
+                 updatePlayerUI();
+            }
+        }
+
+        function playNext() {
+            if (songs.length === 0) return;
+            const nextIndex = (currentSongIndex + 1) % songs.length;
+            playSong(nextIndex);
+        }
+
+        function playPrev() {
+            if (songs.length === 0) return;
+            if (audioPlayer.currentTime > 3 || currentSongIndex === 0) {
+                 audioPlayer.currentTime = 0;
+                 if (!isPlaying) togglePlayPause();
+            } else {
+                 const prevIndex = (currentSongIndex - 1 + songs.length) % songs.length;
+                 playSong(prevIndex);
+            }
+        }
+
+        function stopPlayback() {
+            audioPlayer.pause();
+            audioPlayer.currentTime = 0;
+            isPlaying = false;
+        }
+
+        function updatePlayerUI() {
+            const song = songs[currentSongIndex];
+
+            if (song) {
+                playerTitle.textContent = song.title || 'Unknown Title';
+                playerArtist.textContent = song.artist || 'Unknown Artist';
+                playerCover.src = song.coverSrc || DEFAULT_COVER;
+                playerCover.alt = `${song.title || 'Song'} cover`;
+                playPauseIconContainer.innerHTML = isPlaying ? SVG_PAUSE : SVG_PLAY;
+                playPauseBtn.title = isPlaying ? 'Pause' : 'Play';
+            } else {
+                playerTitle.textContent = 'No Song Playing';
+                playerArtist.textContent = '';
+                playerCover.src = DEFAULT_COVER;
+                playerCover.alt = 'Album Cover';
+                playPauseIconContainer.innerHTML = SVG_PLAY;
+                playPauseBtn.title = 'Play';
+                currentTime.textContent = '0:00';
+                duration.textContent = '0:00';
+                progressBar.value = 0;
+                updateProgressBarVisual();
+            }
+             highlightCurrentSong();
+        }
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return '0:00';
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+        }
+
+        function updateProgressBarVisual() {
+            const perc = progressBar.value || 0;
+            progressBar.style.background = `linear-gradient(to right, #fa7d07 ${perc}%, #4d4d4d ${perc}%)`;
+        }
+
+        function updateVolumeVisual() {
+            const vol = audioPlayer.volume;
+            const muted = audioPlayer.muted;
+            let iconSvg = SVG_VOLUME_HIGH;
+            let title = 'Mute';
+
+            if (muted || vol === 0) {
+                iconSvg = SVG_VOLUME_MUTED;
+                title = 'Unmute';
+            } else if (vol < 0.01) {
+                 iconSvg = SVG_VOLUME_MUTED;
+                 title = 'Unmute';
+            } else if (vol < 0.5) {
+                iconSvg = SVG_VOLUME_LOW;
+            }
+
+            volumeIconContainer.innerHTML = iconSvg;
+            volumeIconBtn.title = title;
+
+             if (!muted) volumeControl.value = vol * 100;
+             else volumeControl.value = 0;
+        }
+
+        function openModal() {
+            resetModal();
+            addSongModal.classList.remove('hidden');
+            addSongModal.classList.add('flex');
+        }
+
+        function closeModal() {
+            addSongModal.classList.add('hidden');
+            addSongModal.classList.remove('flex');
+            resetModal();
+        }
+
+        function resetModal() {
+            mp3File = null; mp3FileName.textContent = ''; mp3Input.value = '';
+            coverFile = null; coverFileName.textContent = ''; coverInput.value = '';
+            titleNameInput.value = '';
+            artistNameInput.value = '';
+            saveSongBtn.disabled = true;
+            saveSpinner.classList.add('hidden');
+            hideModalError();
+            dropZoneMp3.classList.remove('drag-over', 'border-orange-500', 'border-red-500', 'border-blue-500', 'bg-[#333]');
+            dropZoneMp3.classList.add('border-gray-600');
+            dropZoneCover.classList.remove('drag-over', 'border-orange-500', 'border-red-500', 'border-blue-500', 'bg-[#333]');
+            dropZoneCover.classList.add('border-gray-600');
+        }
+
+        function validateModal() {
+            const isValid = !!mp3File;
+            saveSongBtn.disabled = !isValid;
+            return isValid;
+        }
+
+        function handleFileSelect(file) {
+            mp3FileName.textContent = '';
+            dropZoneMp3.classList.remove('drag-over', 'border-orange-500', 'border-red-500', 'border-blue-500', 'bg-[#333]');
+            dropZoneMp3.classList.add('border-gray-600');
+
+            if (!file) { mp3File = null; validateModal(); return; }
+
+            if (!file.type.startsWith('audio/mpeg') && !file.name.toLowerCase().endsWith('.mp3')) {
+                showModalError('Invalid file type. Please select an MP3 file.');
+                mp3Input.value = ''; mp3File = null; dropZoneMp3.classList.add('border-red-500');
+                validateModal(); return;
+            }
+            if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+                showModalError(`MP3 file too large (Max ${MAX_FILE_SIZE_MB}MB).`);
+                mp3Input.value = ''; mp3File = null; dropZoneMp3.classList.add('border-red-500');
+                validateModal(); return;
+            }
+
+            hideModalError();
+            mp3File = file;
+            mp3FileName.textContent = file.name;
+            dropZoneMp3.classList.add('border-orange-500');
+            validateModal();
+        }
+
+        function handleCoverFileSelect(file) {
+             coverFileName.textContent = '';
+             dropZoneCover.classList.remove('drag-over', 'border-orange-500', 'border-red-500', 'border-blue-500', 'bg-[#333]');
+             dropZoneCover.classList.add('border-gray-600');
+             if (!file) { coverFile = null; return; }
+
+             if (!ALLOWED_COVER_TYPES.includes(file.type)) {
+                 showModalError('Invalid cover type (PNG, JPG, GIF only).');
+                 coverInput.value = ''; coverFile = null; dropZoneCover.classList.add('border-red-500');
+                 return;
+             }
+
+             hideModalError();
+             coverFile = file;
+             coverFileName.textContent = file.name;
+             dropZoneCover.classList.add('border-orange-500');
+        }
+
+        function showModalError(message) {
+            modalError.textContent = message;
+            modalError.classList.remove('hidden');
+        }
+
+        function hideModalError() {
+            modalError.textContent = '';
+            modalError.classList.add('hidden');
+        }
+
+        function setupEventListeners() {
+            addSongBtn.addEventListener('click', openModal);
+            closeModalBtn.addEventListener('click', closeModal);
+            cancelAddSongBtn.addEventListener('click', closeModal);
+            saveSongBtn.addEventListener('click', handleUpload);
+            addSongModal.addEventListener('click', (e) => { if (e.target === addSongModal) closeModal(); });
+
+            browseMp3Btn.addEventListener('click', () => mp3Input.click());
+            mp3Input.addEventListener('change', (e) => handleFileSelect(e.target.files[0]));
+            setupDragDrop(dropZoneMp3, handleFileSelect);
+            browseCoverBtn.addEventListener('click', () => coverInput.click());
+            coverInput.addEventListener('change', (e) => handleCoverFileSelect(e.target.files[0]));
+            setupDragDrop(dropZoneCover, handleCoverFileSelect);
+
+            playPauseBtn.addEventListener('click', togglePlayPause);
+            nextBtn.addEventListener('click', playNext);
+            prevBtn.addEventListener('click', playPrev);
+
+            audioPlayer.addEventListener('timeupdate', () => {
+                if (audioPlayer.duration && isFinite(audioPlayer.duration)) {
+                    const progress = (audioPlayer.currentTime / audioPlayer.duration) * 100;
+                    progressBar.value = isNaN(progress) ? 0 : progress;
+                    currentTime.textContent = formatTime(audioPlayer.currentTime);
+                    updateProgressBarVisual();
+                } else {
+                    currentTime.textContent = formatTime(audioPlayer.currentTime);
+                    progressBar.value = 0; updateProgressBarVisual();
+                }
+            });
+            audioPlayer.addEventListener('loadedmetadata', () => {
+                 duration.textContent = isFinite(audioPlayer.duration) ? formatTime(audioPlayer.duration) : '?:??';
+                 progressBar.value = 0; updateProgressBarVisual();
+            });
+            audioPlayer.addEventListener('ended', playNext);
+            audioPlayer.addEventListener('play', () => { isPlaying = true; updatePlayerUI(); });
+            audioPlayer.addEventListener('pause', () => { isPlaying = false; updatePlayerUI(); });
+            audioPlayer.addEventListener('error', (e) => {
+                console.error('Audio Player Error:', e);
+                const song = songs[currentSongIndex];
+                const errorSrc = e.target?.currentSrc || audioPlayer.src;
+                const songSrc = song?.audioSrc;
+                if (song && songSrc && errorSrc.includes(songSrc.split('/').pop())) {
+                     console.error(`Error specifically related to: ${song.title} (${songSrc})`);
+                     stopPlayback(); updatePlayerUI(); checkPlayerButtons();
+                 } else if (song) console.warn(`Playback error, might not be related to current song: ${song.title}. Error src: ${errorSrc}`);
+                 else console.error("Playback error with no current song selected.");
+            });
+
+            
+            progressBar.addEventListener('input', () => {
+                 updateProgressBarVisual();
+                 if (audioPlayer.duration && isFinite(audioPlayer.duration)) {
+                    const time = (progressBar.value / 100) * audioPlayer.duration;
+                    if (isFinite(time)) audioPlayer.currentTime = time;
+                 }
+            });
+
+            
+            volumeControl.addEventListener('input', (e) => {
+                const vol = e.target.value / 100;
+                audioPlayer.muted = false;
+                audioPlayer.volume = vol;
+                lastVolume = vol;
+                updateVolumeVisual();
+            });
+            volumeIconBtn.addEventListener('click', () => {
+                 if (audioPlayer.muted) {
+                     audioPlayer.muted = false;
+                     audioPlayer.volume = (lastVolume > 0.01) ? lastVolume : 1;
+                 } else {
+                     lastVolume = audioPlayer.volume;
+                     audioPlayer.muted = true;
+                 }
+                 updateVolumeVisual();
+             });
+             audioPlayer.addEventListener('volumechange', updateVolumeVisual);
+
+            searchInput.addEventListener('input', (e) => {
+                const term = e.target.value.toLowerCase().trim();
+                const filtered = term === '' ? songs : songs.filter(s =>
+                    (s.title?.toLowerCase() || '').includes(term) ||
+                    (s.artist?.toLowerCase() || '').includes(term) ||
+                    (s.album?.toLowerCase() || '').includes(term) 
+                );
+                renderSongList(filtered);
+            });
+        }
+
+        function setupDragDrop(element, callbackOnFile) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                element.addEventListener(eventName, preventDefaults, false);
+            });
+            function preventDefaults(e) { e.preventDefault(); e.stopPropagation(); }
+            ['dragenter', 'dragover'].forEach(eventName => {
+                element.addEventListener(eventName, () => element.classList.add('drag-over'), false);
+            });
+            ['dragleave', 'drop'].forEach(eventName => {
+                element.addEventListener(eventName, () => element.classList.remove('drag-over'), false);
+            });
+            element.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer; const files = dt.files;
+                if (files.length > 0) {
+                    element.classList.remove('border-blue-500', 'bg-[#333]');
+                    callbackOnFile(files[0]);
+                }
+            }, false);
+        }
+
+        init();
+
+    </script>
+
+</body>
+</html>
